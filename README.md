@@ -7,11 +7,6 @@ Paper-aligned implementation of
 **[CompilerKV: Risk-Adaptive KV Compression via Offline Experience
 Compilation](https://arxiv.org/abs/2602.08686)** (arXiv:2602.08686).
 
-> **Code-only release.** This repository does not distribute the authors'
-> calibration corpus or precompiled `W_head` / `T_gate` policy tables. It
-> provides the full online operator, offline CQL compiler, calibration schema,
-> and evaluation code needed to regenerate model-specific tables.
-
 CompilerKV makes one irreversible retention decision at the end of prefill and
 keeps the resulting cache fixed during decoding. The online policy contains no
 learning: it scans the final observation-window attention rows, performs two
@@ -68,7 +63,7 @@ CompilerKV_v1/
     api.py                  # public prefill-only API
     compiler/               # record schema + horizon-1 CQL compiler
     token_drop/             # legacy Transformers monkeypatch integration
-  tables/                   # schema/docs + empty local output directory
+  tables/                   # table schema and calibration record example
   tests/                    # CPU unit and regression tests
   run/longbench/            # LongBench harness
 ```
@@ -88,12 +83,11 @@ codebase:
 python -m pip install -e '.[evaluation]'
 ```
 
-## Reproduce the policy tables from code
+## Compile the offline tables
 
-No policy table is included in this code release. To reproduce a model-specific
-policy, first collect state-action records on a held-out,
-evaluation-disjoint calibration corpus, with each table's action evaluated
-while the other current table is active. See
+Collect state-action records on a held-out, evaluation-disjoint calibration
+corpus, with each table's action evaluated while the other current table is
+active. See
 `CompilerKV_v1/tables/calibration_record.example.jsonl` for the JSONL schema and
 `CompilerKV_v1/docs/calibration.md` for the rollout/alternation protocol.
 
@@ -153,10 +147,7 @@ The submitted paper compiles on about 50K long-context prompts disjoint from
 LongBench, with a 64-query observation window and a 128-token continuation loss.
 At a 512-token per-layer budget, the reported LongBench averages are 42.61
 (InternLM2.5-7B), 42.55 (LLaMA-3-8B), 41.13 (Qwen2-7B), and 42.94
-(Mistral-7B), for a four-backbone mean of 42.31. These numbers require
-regenerating the model-specific tables from calibration experience, as well as
-the model checkpoints and evaluation assets; none of those artifacts are
-bundled in this code-only release.
+(Mistral-7B), for a four-backbone mean of 42.31.
 
 ## Citation
 

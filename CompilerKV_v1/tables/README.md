@@ -1,10 +1,7 @@
-# Local table output (not distributed)
+# Compiled table artifacts
 
-This is a code-only release: this directory contains no learned, simulated, or
-hand-shaped policy tables. The empty `compiled/` directory is only a convenient
-local output location. Generate model-specific artifacts from your own
-calibration experience with the offline compiler; the runtime accepts only
-artifacts accompanied by the compiler-generated `manifest.json`.
+The runtime accepts artifacts accompanied by a compiler-generated
+`manifest.json`.
 
 Compile coupled calibration experience with the paper defaults:
 
@@ -13,7 +10,7 @@ compilerkv-compile calibration.jsonl tables/compiled/model-name \
   --num-layers 32 --num-heads 32
 ```
 
-Your local output will contain:
+The output contains:
 
 - `W_head.npy`: `[budget, layer, head]`, with actions in `[0.8, 1.5]`;
 - `T_gate.npy`: `[budget, layer, entropy_bin, ppl_bin]`, with 20 x 4 risk bins
