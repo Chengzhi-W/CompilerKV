@@ -2,6 +2,7 @@ import os
 import json
 import random
 import argparse
+from pathlib import Path
 
 import numpy as np
 from tqdm import tqdm
@@ -9,7 +10,8 @@ from tqdm import tqdm
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import sys
-sys.path.append("/root/autodl-tmp/compilerkv/Base")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 from kv_compression.token_drop.monkeypatch import replace_attention
 datasets = ["narrativeqa", "qasper", "multifieldqa_en", "hotpotqa", "2wikimqa", "musique", \
             "gov_report", "qmsum", "multi_news", "trec", "triviaqa", "samsum", \
@@ -86,16 +88,19 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.cuda.manual_seed_all(seed)
 
-def _align_cache_block(n):
-    """Align capacity to cache line boundary."""
-    _b = {96: 256, 128: 512, 256: 1024, 512: 2048, 1024: 4096}
-    return _b.get(n, n)
-
 def build_chat(prompt):
         prompt = f"[INST] {prompt} [/INST]"
         return prompt
 
 def inference_preds(args):
+    if args.method.lower() == "compilerkv" and args.eval_batch_size != 1:
+        raise ValueError("CompilerKV's elastic cache requires --eval_batch_size 1 in the legacy runner")
+    if args.method.lower() == "compilerkv" and not args.tables_dir:
+        raise ValueError("--tables_dir must point to artifacts produced by compilerkv-compile")
+    prompt_ppl = {}
+    if args.prompt_ppl_file:
+        with open(args.prompt_ppl_file, encoding="utf-8") as stream:
+            prompt_ppl = json.load(stream)
     print("Loading data...")  
     test_data = []  
     prompts = []
@@ -109,6 +114,7 @@ def inference_preds(args):
     _ids = []
     input_max_len = 0
     
+    model_max_len = int(min(getattr(tokenizer, "model_max_length", 32768), 1_048_576))
     for key in model2maxlen:
         if key in args.model_path:
             model_max_len = model2maxlen[key]
@@ -193,23 +199,38 @@ def inference_preds(args):
             pooling = args.pooling
             
             layers = len(model.model.layers)
+            current_ppl = args.prompt_ppl
+            if prompt_ppl:
+                current_ppl = prompt_ppl.get(str(batch__ids[0]))
             # check if window_sizes is a list
             if "internlm" in args.model_name:
                 for i in range(layers):
-                    model.model.layers[i].attention.config.window_size = window_sizes
-                    model.model.layers[i].attention.config.max_capacity_prompt = max_capacity_prompts
-                    model.model.layers[i].attention.config.kernel_size = kernel_sizes
-                    model.model.layers[i].attention.config.pooling = pooling
+                    attention = model.model.layers[i].attention
+                    attention.config.window_size = window_sizes
+                    attention.config.max_capacity_prompt = max_capacity_prompts
+                    attention.config.kernel_size = kernel_sizes
+                    attention.config.pooling = pooling
+                    attention.config.tables_dir = args.tables_dir
+                    attention.config.prompt_ppl = current_ppl
+                    attention.config.missing_ppl = args.missing_ppl
+                    if hasattr(attention, "kv_cluster"):
+                        attention.kv_cluster.prompt_ppl = current_ppl
                     if "dynamic" in args.method :
-                        model.model.layers[i].attention.config.radio_max = args.radio_max
+                        attention.config.radio_max = args.radio_max
             else:
                 for i in range(layers):
-                    model.model.layers[i].self_attn.config.window_size = window_sizes
-                    model.model.layers[i].self_attn.config.max_capacity_prompt = max_capacity_prompts
-                    model.model.layers[i].self_attn.config.kernel_size = kernel_sizes
-                    model.model.layers[i].self_attn.config.pooling = pooling
+                    attention = model.model.layers[i].self_attn
+                    attention.config.window_size = window_sizes
+                    attention.config.max_capacity_prompt = max_capacity_prompts
+                    attention.config.kernel_size = kernel_sizes
+                    attention.config.pooling = pooling
+                    attention.config.tables_dir = args.tables_dir
+                    attention.config.prompt_ppl = current_ppl
+                    attention.config.missing_ppl = args.missing_ppl
+                    if hasattr(attention, "kv_cluster"):
+                        attention.kv_cluster.prompt_ppl = current_ppl
                     if "dynamic" in args.method :
-                        model.model.layers[i].self_attn.config.radio_max = args.radio_max
+                        attention.config.radio_max = args.radio_max
                     
 
         context_length = batch_input_ids.shape[-1]
@@ -233,14 +254,16 @@ def inference_preds(args):
             )
 
 
-        batch_outputs =tokenizer.batch_decode([output[0][context_length:]], skip_special_tokens=True)
+        batch_outputs = tokenizer.batch_decode(
+            output[:, context_length:], skip_special_tokens=True
+        )
         
         
         batch_generations = batch_outputs
 
         torch.cuda.empty_cache()
 
-        for j in range(args.eval_batch_size):
+        for j in range(len(batch_outputs)):
             
             example = {}
             
@@ -264,29 +287,36 @@ def inference_preds(args):
 
 def _args(parser):
     parser.add_argument("--seed", type=int, default=42, help="")
-    parser.add_argument("--dataset_file", type=str, default="/root/autodl-tmp/compilerkv/Base/data/LongBench")
+    parser.add_argument("--dataset_file", type=str, default=str(PROJECT_ROOT / "data" / "LongBench"))
     parser.add_argument("--data_file", type=str, default="")
-    parser.add_argument("--save_dir", type=str, default="/root/autodl-tmp/compilerkv/Base/results")
+    parser.add_argument("--save_dir", type=str, default=str(PROJECT_ROOT / "results"))
     parser.add_argument("--model_name", type=str, default=None, help="if specified, we will load the model to generate the predictions.")
-    parser.add_argument("--model_path", type=str, default="DynamicKV/models/Meta-Llama-3-8B-Instruct", help="if specified, we will load the model to generate the predictions.")
-    parser.add_argument("--use_fast_tokenizer", type=bool, default=True, help="")
+    parser.add_argument("--model_path", type=str, default="meta-llama/Meta-Llama-3-8B-Instruct", help="local checkpoint or Hugging Face model id")
+    parser.add_argument(
+        "--use_fast_tokenizer",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     parser.add_argument("--max_num_examples", type=int, default=None, help="maximum number of examples to evaluate per task.")
     parser.add_argument("--sample_method", type=str, default="topk", choices=["random", "topk"], help="how to sample the examples.")
     parser.add_argument("--max_new_tokens", type=int, default=None, help="")
     parser.add_argument("--eval_batch_size", type=int, default=1, help="batch size for evaluation.")
-    parser.add_argument("--use_cache", type=bool, default=True, help="")
+    parser.add_argument("--use_cache", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--attn_implementation", type=str,  default="flash_attention_2", choices=["flash_attention_2", "sdpa", "eager"])
-    parser.add_argument("--method", type=str,  default="dynamickv")
-    parser.add_argument("--max_capacity_prompts", type=int, default=128, help="")
-    parser.add_argument("--window_size", type=int, default=16, help="")
+    parser.add_argument("--method", type=str, default="compilerkv")
+    parser.add_argument("--max_capacity_prompts", type=int, default=512, help="per-layer total KV budget")
+    parser.add_argument("--window_size", type=int, default=64, help="observation window")
     parser.add_argument("--max_capacity_prompts_ratio", type=float, default=-1, help="")
     parser.add_argument("--use_chat_format", action="store_true", help="If given, we will use the chat format for the prompts.")
     parser.add_argument("--kernel_sizes", type=int, default=7, help="")
     parser.add_argument("--pooling", type=str, default="avgpool", help="")
     parser.add_argument("--radio_max", type=float, default=5.0, help="")
+    parser.add_argument("--tables_dir", type=str, default=None)
+    parser.add_argument("--prompt_ppl", type=float, default=None)
+    parser.add_argument("--prompt_ppl_file", type=str, default=None, help="JSON map from LongBench _id to local PPL")
+    parser.add_argument("--missing_ppl", choices=["error", "median"], default="error")
     args = parser.parse_args()
     args._raw_cap = args.max_capacity_prompts
-    args.max_capacity_prompts = _align_cache_block(args.max_capacity_prompts)
  
     return args
 
@@ -319,6 +349,7 @@ if __name__ == "__main__":
     )
     if args.model_name is None:
         args.model_name = args.model_path.split("/")[-1].lower()
+    args.model_name = args.model_name.lower()
     args.model_path = args.model_path.lower()
     
     if "llama" in args.model_name:

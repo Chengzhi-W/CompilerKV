@@ -17,7 +17,7 @@ from transformers.utils import (
     logging,
     is_flash_attn_2_available,
 )
-from ..methods.dynamic_v11 import init_dynamickv_V11
+from ..methods.dynamickv_v11 import init_dynamickv_V11
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa

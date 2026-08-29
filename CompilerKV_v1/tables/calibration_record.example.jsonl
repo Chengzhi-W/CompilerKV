@@ -1,0 +1,2 @@
+{"kind":"head","prompt_id":"pg19-0001","layer":0,"head":0,"budget":512,"action":1.0,"full_loss":1.82,"compressed_loss":1.87,"sequence_length":32768,"paired_policy":"round-0-gate"}
+{"kind":"gate","prompt_id":"pg19-0001","layer":0,"budget":512,"action":0.9,"full_loss":1.82,"compressed_loss":1.85,"sequence_length":32768,"entropy":8.42,"ppl":12.7,"candidate_count":603,"paired_policy":"round-0-head"}

@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-folders=(/DynamicKV/results/qwen2-7b-instruct_streamingllm_512_32_7_maxpool)
-
-for folder in "${folders[@]}"; do
-    python3 /DynamicKV/run/longbench/eval.py --results_dir "$folder" & 
-done
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+: "${RESULTS_DIR:?Set RESULTS_DIR to one model/method result directory}"
+python "${PROJECT_DIR}/run/longbench/eval.py" \
+  --results_dir "${RESULTS_DIR}" \
+  --method "${METHOD:-compilerkv}"

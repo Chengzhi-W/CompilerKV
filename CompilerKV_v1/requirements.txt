@@ -6,7 +6,7 @@
 
 # Core
 torch>=2.1.0
-transformers>=4.40.0
+transformers>=4.44.0,<4.46.0
 accelerate>=0.26.0
 numpy>=1.23.0
 tqdm>=4.66.0
@@ -22,9 +22,6 @@ python-Levenshtein>=0.25.0
 
 # Utils
 jsonlines>=4.0.0
-
-# Plotting (tables/)
-matplotlib>=3.7.0
 
 # Optional (FlashAttention2; usually Linux + CUDA only)
 # flash-attn>=2.5.0

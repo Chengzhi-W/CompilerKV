@@ -1,5 +1,3 @@
-import torch
-from typing import Optional, Tuple, Dict, Any
 from importlib.metadata import version
 import transformers
 
@@ -20,12 +18,10 @@ from .mistral_model_impl.utils import prepare_inputs_for_generation_mistral
 from .qwen2_model_impl.utils import prepare_inputs_for_generation_qwen2
 from .internlm_model_impl.utils import prepare_inputs_for_generation_internlm
 
-import sys
-sys.path.append('/root/.cache/huggingface/modules')
 try:
     import transformers_modules.internlm2_5_7b_chat_1m.modeling_internlm2
 except ImportError:
-    pass  # InternLM module not available
+    transformers_modules = None
 
 llama_forward_function_map = {
     "dynamickv_v11": llama_flash_attn2_forward_DynamicKV_V11,
@@ -74,7 +70,7 @@ def replace_attention(model_type: str, method: str):
         if method_lower in internlm_forward_function_map:
             try:
                 transformers_modules.internlm2_5_7b_chat_1m.modeling_internlm2.InternLM2FlashAttention2.forward = internlm_forward_function_map[method_lower]
-            except NameError:
+            except (AttributeError, NameError):
                 raise ValueError("InternLM module not available. Please ensure it's properly installed.")
         else:
             raise ValueError(f"Unknown method for internlm: {method}")
@@ -82,18 +78,20 @@ def replace_attention(model_type: str, method: str):
         raise ValueError(f"Unsupported model type: {model_type}")
         
     if method_lower not in ["fullkv"]:
-        transformers.models.llama.modeling_llama.LlamaForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_llama
-        transformers.models.mistral.modeling_mistral.MistralForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_mistral
-        transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_qwen2
+        if model_type in {"llama", "lwm"}:
+            transformers.models.llama.modeling_llama.LlamaForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_llama
+        elif model_type == "mistral":
+            transformers.models.mistral.modeling_mistral.MistralForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_mistral
+        elif model_type == "qwen2":
+            transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_qwen2
         try:
             transformers_modules.internlm2_5_7b_chat_1m.modeling_internlm2.InternLM2ForCausalLM.prepare_inputs_for_generation = prepare_inputs_for_generation_internlm
-        except NameError:
+        except (AttributeError, NameError):
             pass  # InternLM not available
 
     
 def check_version():
     try:
-        transformers_version = version("transformers")
+        return version("transformers")
     except Exception as e:
-        print(f"Transformers not installed: {e}")
-    return transformers_version
+        raise RuntimeError(f"Transformers is not installed: {e}") from e

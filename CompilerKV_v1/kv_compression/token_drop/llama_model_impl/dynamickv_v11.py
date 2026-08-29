@@ -13,7 +13,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.utils import (
     logging,
 )
-from ..methods.dynamic_v11 import init_dynamickv_V11
+from ..methods.dynamickv_v11 import init_dynamickv_V11
 logger = logging.get_logger(__name__)
 
 budget_indices = []

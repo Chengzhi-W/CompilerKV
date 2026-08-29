@@ -19,7 +19,7 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-from ..methods.dynamic_v11 import init_dynamickv_V11
+from ..methods.dynamickv_v11 import init_dynamickv_V11
 logger = logging.get_logger(__name__)
 
 budget_indices = []
