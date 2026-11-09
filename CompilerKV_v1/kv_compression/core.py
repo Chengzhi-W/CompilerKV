@@ -283,7 +283,7 @@ class CompilerKVOperator:
         return tensor
 
     @staticmethod
-    def _budgets(budgets: BudgetSpec, layers: int, tokens: int) -> List[int]:
+    def _budgets(budgets: BudgetSpec, layers: int) -> List[int]:
         if isinstance(budgets, int):
             result = [budgets] * layers
         else:
@@ -292,7 +292,9 @@ class CompilerKVOperator:
             raise ValueError(f"expected {layers} per-layer budgets, got {len(result)}")
         if any(value < 0 for value in result):
             raise ValueError("budgets cannot be negative")
-        return [min(value, tokens) for value in result]
+        # The configured budget indexes the compiled policy even when a prompt
+        # is shorter. elastic_select already bounds retention by candidates.
+        return result
 
     def attention_mass(
         self,
@@ -521,7 +523,7 @@ class CompilerKVOperator:
         attention = self._layered(attention, 5, "attention")
         value_cache = self._layered(value_cache, 5, "value_cache")
         layers, _, _, _, tokens = attention.shape
-        per_layer_budgets = self._budgets(budgets, layers, tokens)
+        per_layer_budgets = self._budgets(budgets, layers)
 
         utility, alpha = self.stabilized_utility(
             attention,

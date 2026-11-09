@@ -1,7 +1,7 @@
 # Offline calibration protocol
 
 This document describes the inputs expected by `compilerkv-compile`. It mirrors
-Section C.7 of the submitted paper and separates expensive model rollouts from
+Appendix C.7 of the NeurIPS 2026 paper and separates expensive model rollouts from
 the lightweight CQL table fit.
 
 ## Corpus split

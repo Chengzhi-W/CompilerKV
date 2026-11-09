@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 from typing import Iterable, List, Optional, Union
 
@@ -28,6 +29,10 @@ class CalibrationRecord:
     reward_override: Optional[float] = None
 
     def __post_init__(self) -> None:
+        for name in ("action", "full_loss", "compressed_loss", "entropy", "ppl", "reward_override"):
+            value = getattr(self, name)
+            if value is not None and not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
         if self.kind not in {"head", "gate"}:
             raise ValueError("record kind must be 'head' or 'gate'")
         if not self.prompt_id:

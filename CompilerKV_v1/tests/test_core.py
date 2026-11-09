@@ -99,3 +99,20 @@ def test_budget_and_head_mismatches_are_not_silently_interpolated():
         tables.gate_for(layers=1, budget=256)
     with pytest.raises(ValueError, match="compiled for 2 heads"):
         tables.head_for(layers=1, heads=4, budget=512)
+
+
+@pytest.mark.parametrize("budget", [512, [512]])
+def test_short_prompt_uses_configured_budget_for_table_lookup(budget):
+    tables = CompiledTables(
+        head_weights=np.ones((1, 1, 1), dtype=np.float32),
+        gate_thresholds=np.full((1, 1, 1, 1), 0.8, dtype=np.float32),
+        entropy_edges=np.array([], dtype=np.float32),
+        ppl_edges=np.array([], dtype=np.float32),
+        budget_values=np.array([512]),
+    )
+    operator = CompilerKVOperator(tables)
+    attention = torch.full((1, 1, 1, 2, 8), 1 / 8)
+    cache = torch.ones(1, 1, 1, 8, 2)
+    output = operator.compress(attention, cache, budgets=budget, key_cache=cache, local_ppl=2.0)
+    assert output.indices[0][0].tolist() == list(range(8))
+    assert output.key_cache[0][0].shape[-2] == 8

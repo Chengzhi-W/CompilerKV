@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -21,6 +22,11 @@ class CQLConfig:
     balance_states: bool = True
 
     def __post_init__(self) -> None:
+        for name in ("learning_rate", "conservative_weight", "weight_decay"):
+            if not math.isfinite(getattr(self, name)):
+                raise ValueError(f"{name} must be finite")
+        if self.weight_decay < 0:
+            raise ValueError("weight_decay cannot be negative")
         if self.learning_rate <= 0 or self.batch_size <= 0 or self.epochs <= 0:
             raise ValueError("learning_rate, batch_size and epochs must be positive")
         if self.conservative_weight < 0:
@@ -52,6 +58,13 @@ def fit_horizon_one_cql(
         raise ValueError("CQL record tensors must have equal lengths")
     if len(state_ids) == 0:
         raise ValueError("cannot fit CQL without records")
+    if num_states <= 0 or num_actions <= 0:
+        raise ValueError("num_states and num_actions must be positive")
+    integer_dtypes = {torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64}
+    if state_ids.dtype not in integer_dtypes or action_ids.dtype not in integer_dtypes:
+        raise ValueError("state_ids and action_ids must have integer dtypes")
+    if not torch.isfinite(rewards).all():
+        raise ValueError("rewards must be finite")
     if int(state_ids.min()) < 0 or int(state_ids.max()) >= num_states:
         raise ValueError("state id is outside the declared state space")
     if int(action_ids.min()) < 0 or int(action_ids.max()) >= num_actions:
@@ -64,6 +77,8 @@ def fit_horizon_one_cql(
     states_cpu = state_ids.to(dtype=torch.long, device="cpu")
     actions_cpu = action_ids.to(dtype=torch.long, device="cpu")
     rewards_cpu = rewards.to(dtype=torch.float32, device="cpu")
+    if not torch.isfinite(rewards_cpu).all():
+        raise ValueError("rewards must be representable as finite float32 values")
     q_values = torch.nn.Parameter(torch.zeros(num_states, num_actions, device=device))
     optimizer = torch.optim.AdamW(
         [q_values], lr=config.learning_rate, weight_decay=config.weight_decay
