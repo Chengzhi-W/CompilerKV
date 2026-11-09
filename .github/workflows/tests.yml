@@ -9,8 +9,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Python 3.9 binaries are available on 22.04, but not Ubuntu 26.04.
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.9', '3.12']
     defaults:
